@@ -42,7 +42,7 @@ function parse_args()
 
 parse_args $@
 
-TOP_VR=$TDIR/hardware/samsung_slsi/slsiap/prebuilt/modules/vr
+TOP_VR=$TDIR/hardware/samsung_slsi/slsiap/modules/vr
 TOP_CODA=$TDIR/vendor/nexell/s5p4418/modules/coda960
 
 if [ ! -d $KDIR ]; then
