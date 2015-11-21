@@ -22,6 +22,7 @@ ifeq (,$(filter true, $(TARGET_NO_RECOVERY)))
 # here are copy+modify of @build/core/Makefile
 
 recovery_initrc := $(call include-path-for, recovery)/etc/init.rc
+recovery_sepolicy := $(call intermediates-dir-for,ETC,sepolicy.recovery)/sepolicy.recovery
 recovery_ramdisk := $(PRODUCT_OUT)/ramdisk-recovery.img
 recovery_build_prop := $(INSTALLED_BUILD_PROP_TARGET)
 recovery_binary := $(call intermediates-dir-for,EXECUTABLES,recovery)/recovery
@@ -29,11 +30,28 @@ recovery_resources_common := $(call include-path-for, recovery)/res
 
 INSTALLED_RECOVERY_RAMDISK_TARGET := $(recovery_ramdisk)
 
-# Select the 18x32 font on high-density devices; and the 12x22 font on
-# other devices.  Note that the font selected here can be overridden
-# for a particular device by putting a font.png in its private
-# recovery resources.
-ifneq (,$(filter xxhdpi xhdpi,$(subst $(comma),$(space),$(PRODUCT_AAPT_CONFIG))))
+# Set recovery_density to the density bucket of the device.
+recovery_density := unknown
+ifneq (,$(PRODUCT_AAPT_PREF_CONFIG))
+# If PRODUCT_AAPT_PREF_CONFIG includes a dpi bucket, then use that value.
+recovery_density := $(filter %dpi,$(PRODUCT_AAPT_PREF_CONFIG))
+else
+# Otherwise, use the default medium density.
+recovery_densities := mdpi
+endif
+
+ifneq (,$(wildcard $(recovery_resources_common)-$(recovery_density)))
+recovery_resources_common := $(recovery_resources_common)-$(recovery_density)
+else
+recovery_resources_common := $(recovery_resources_common)-xhdpi
+endif
+
+# Select the 18x32 font on high-density devices (xhdpi and up); and
+# the 12x22 font on other devices.  Note that the font selected here
+# can be overridden for a particular device by putting a font.png in
+# its private recovery resources.
+
+ifneq (,$(filter xxxhdpi xxhdpi xhdpi,$(recovery_density)))
 recovery_font := $(call include-path-for, recovery)/fonts/18x32.png
 else
 recovery_font := $(call include-path-for, recovery)/fonts/12x22.png
@@ -79,7 +97,7 @@ $(RECOVERY_INSTALL_OTA_KEYS): $(OTA_PUBLIC_KEYS) $(DUMPKEY_JAR) $(extra_keys)
 $(INSTALLED_RECOVERY_RAMDISK_TARGET): $(MKBOOTFS) $(MINIGZIP) \
 		$(INSTALLED_RAMDISK_TARGET) \
 		$(recovery_binary) \
-		$(recovery_initrc) \
+		$(recovery_initrc) $(recovery_sepolicy) \
 		$(recovery_build_prop) $(recovery_resource_deps) \
 		$(recovery_fstab) \
 		$(RECOVERY_INSTALL_OTA_KEYS)
@@ -92,9 +110,13 @@ $(INSTALLED_RECOVERY_RAMDISK_TARGET): $(MKBOOTFS) $(MINIGZIP) \
 	@echo Modifying recovery contents...
 	$(hide) rm -f $(TARGET_RECOVERY_ROOT_OUT)/init*.rc
 	$(hide) cp -f $(recovery_initrc) $(TARGET_RECOVERY_ROOT_OUT)/
+	$(hide) rm -f $(TARGET_RECOVERY_ROOT_OUT)/sepolicy
+	$(hide) cp -f $(recovery_sepolicy) $(TARGET_RECOVERY_ROOT_OUT)/sepolicy
 	$(hide) -cp $(TARGET_ROOT_OUT)/init.recovery.*.rc $(TARGET_RECOVERY_ROOT_OUT)/
 	$(hide) cp -f $(recovery_binary) $(TARGET_RECOVERY_ROOT_OUT)/sbin/
-	$(hide) cp -rf $(recovery_resources_common) $(TARGET_RECOVERY_ROOT_OUT)/
+	$(hide) mkdir -p $(TARGET_RECOVERY_ROOT_OUT)/res
+	$(hide) rm -rf $(TARGET_RECOVERY_ROOT_OUT)/res/*
+	$(hide) cp -rf $(recovery_resources_common)/* $(TARGET_RECOVERY_ROOT_OUT)/res
 	$(hide) cp -f $(recovery_font) $(TARGET_RECOVERY_ROOT_OUT)/res/images/font.png
 	$(hide) $(foreach item,$(recovery_resources_private), \
 	  cp -rf $(item) $(TARGET_RECOVERY_ROOT_OUT)/)
@@ -104,6 +126,9 @@ $(INSTALLED_RECOVERY_RAMDISK_TARGET): $(MKBOOTFS) $(MINIGZIP) \
 	$(hide) cat $(INSTALLED_DEFAULT_PROP_TARGET) $(recovery_build_prop) \
 	        > $(TARGET_RECOVERY_ROOT_OUT)/default.prop
 	$(hide) $(MKBOOTFS) $(TARGET_RECOVERY_ROOT_OUT) | $(MINIGZIP) > $(recovery_ramdisk)
+ifeq (true,$(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_SUPPORTS_VERITY))
+	$(BOOT_SIGNER) /recovery $@ $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_VERITY_SIGNING_KEY).pk8 $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_VERITY_SIGNING_KEY).x509.pem $@
+endif
 	@echo ----- Made recovery ramdisk: $@ --------
 
 $(RECOVERY_RESOURCE_ZIP): $(INSTALLED_RECOVERY_RAMDISK_TARGET)
