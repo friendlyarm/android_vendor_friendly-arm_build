@@ -1,7 +1,12 @@
 #!/bin/bash
 
-KDIR=/opt/FriendlyARM/s5p4418/linux-3.4.y
-TDIR=`pwd`
+TCPU=s5p4418
+if [[ ${TARGET_PRODUCT} == *nanopi3 ]]; then
+	TCPU=s5p6818
+fi
+
+TDIR=${ANDROID_BUILD_TOP}
+KDIR=/opt/FriendlyARM/${TCPU}/linux-3.4.y
 SELF=$0
 
 #----------------------------------------------------------
@@ -13,19 +18,21 @@ function usage()
 	echo ""
 	echo "Options:"
 	echo "  -h                    show this help message and exit"
+	echo "  -c <s5p4418|s5p6818>  default: $TCPU"
 	echo "  -k <kernel dir>       default: $KDIR"
-	echo "  -d <android TOP dir>  default: PWD"
+	echo "  -d <android TOP dir>  default: ${TDIR:='PWD'}"
 	echo "  clean                 make clean only"
 }
 
 function parse_args()
 {
-	TEMP=`getopt -o "k:d:h" -n "$SELF" -- "$@"`
+	TEMP=`getopt -o "c:k:d:h" -n "$SELF" -- "$@"`
 	if [ $? != 0 ] ; then exit 1; fi
 	eval set -- "$TEMP"
 
 	while true; do
 		case "$1" in
+			-c ) TCPU=$2; shift 2;;
 			-k ) KDIR=$2; shift 2;;
 			-d ) TDIR=$2; shift 2;;
 			-h ) usage; exit 1 ;;
@@ -42,8 +49,10 @@ function parse_args()
 
 parse_args $@
 
+true ${TDIR:=`pwd`}
+
 TOP_VR=$TDIR/hardware/samsung_slsi/slsiap/modules/vr
-TOP_CODA=$TDIR/vendor/nexell/s5p4418/modules/coda960
+TOP_CODA=$TDIR/vendor/nexell/${TCPU}/modules/coda960
 
 if [ ! -d $KDIR ]; then
 	echo "Couldn't find kernel source: $KDIR"
